@@ -25,7 +25,7 @@ const Login = () => {
       await auth.removeUser();
       // Then redirect to Cognito logout
       const clientId = '1891fth9eq6mfem6tiu3o2g48';
-      const logoutUri = 'http://localhost:3000';
+      const logoutUri = 'https://d29oqcc91tj24b.cloudfront.net';
       const cognitoDomain = 'https://us-east-1cxp5bcfnh.auth.us-east-1.amazoncognito.com';
       window.location.href = `${cognitoDomain}/logout?client_id=${clientId}&logout_uri=${encodeURIComponent(logoutUri)}`;
     } catch (error) {

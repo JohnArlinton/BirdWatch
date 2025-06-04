@@ -15,9 +15,9 @@ const Navbar = ({ onMenuClick }: NavbarProps) => {
       // First remove user from local storage
       await auth.removeUser();
       // Then redirect to Cognito logout
-      const clientId = '1891fth9eq6mfem6tiu3o2g48';
-      const logoutUri = 'http://localhost:3000';
-      const cognitoDomain = 'https://us-east-1cxp5bcfnh.auth.us-east-1.amazoncognito.com';
+      const clientId = '73o1d36ie045el2skapvd2f0u9';
+      const logoutUri = 'https://d29oqcc91tj24b.cloudfront.net';
+      const cognitoDomain = 'https://ap-southeast-2knlxe7ki4.auth.ap-southeast-2.amazoncognito.com';
       window.location.href = `${cognitoDomain}/logout?client_id=${clientId}&logout_uri=${encodeURIComponent(logoutUri)}`;
     } catch (error) {
       console.error('Logout error:', error);
