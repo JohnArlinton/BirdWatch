@@ -82,45 +82,63 @@ const mockMediaFiles: MediaFile[] = [
  * Upload a media file to the server
  */
 export const uploadMedia = async (file: File): Promise<MediaFile> => {
-  // In a real implementation, this would upload to API Gateway
-  // which would trigger a Lambda to process the file
-  
-  // Simulate API call delay
-  await new Promise(resolve => setTimeout(resolve, 1500));
-  
-  // Mock implementation - return a fake response
-  return {
-    id: `${Date.now()}`,
-    fileName: file.name,
-    fileType: file.type.startsWith('image/') 
-      ? 'image' 
-      : file.type.startsWith('video/') 
-        ? 'video' 
-        : 'audio',
-    fileUrl: URL.createObjectURL(file),
-    thumbnailUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : undefined,
-    tags: [
-      { name: 'uploaded', count: 1 },
-      { name: 'new', count: 1 }
-    ],
-    uploadDate: new Date().toISOString(),
-    userId: 'user123'
-  };
-  
-  // Real implementation would look something like this:
-  /*
-  const formData = new FormData();
-  formData.append('file', file);
-  
-  const response = await axios.post(`${API_BASE_URL}/upload`, formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data',
-      'Authorization': `Bearer ${getAuthToken()}`
+  try {
+    // Step 1: Get presigned URL from API Gateway
+    const response = await fetch('https://rxrmfovcg8.execute-api.ap-southeast-2.amazonaws.com/generate-url', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        fileName: file.name,
+        fileType: file.type
+      })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to get presigned URL: ${response.status} ${response.statusText}`);
     }
-  });
-  
-  return response.data;
-  */
+    
+    const { presignedUrl, fileKey } = await response.json();
+    
+    // Step 2: Upload file directly to S3 using the presigned URL
+    const uploadResponse = await fetch(presignedUrl, {
+      method: 'PUT',
+      body: file,
+      headers: {
+        'Content-Type': file.type
+      }
+    });
+    
+    if (!uploadResponse.ok) {
+      throw new Error(`S3 upload failed: ${uploadResponse.status} ${uploadResponse.statusText}`);
+    }
+    
+    // Step 3: Construct the final file URL (assuming standard S3 URL structure)
+    const s3FileUrl = presignedUrl.split('?')[0]; // Remove query parameters to get clean S3 URL
+    
+    // Transform the response to match our MediaFile interface
+    return {
+      id: fileKey || `${Date.now()}`,
+      fileName: file.name,
+      fileType: file.type.startsWith('image/') 
+        ? 'image' 
+        : file.type.startsWith('video/') 
+          ? 'video' 
+          : 'audio',
+      fileUrl: s3FileUrl,
+      thumbnailUrl: file.type.startsWith('image/') ? s3FileUrl : undefined,
+      tags: [
+        { name: 'uploaded', count: 1 },
+        { name: 'processing', count: 1 }
+      ],
+      uploadDate: new Date().toISOString(),
+      userId: 'user123'
+    };
+  } catch (error) {
+    console.error('Upload error:', error);
+    throw new Error(error instanceof Error ? error.message : 'Upload failed');
+  }
 };
 
 /**
