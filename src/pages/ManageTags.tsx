@@ -1,14 +1,14 @@
 import { useState } from 'react';
-import { Search, Plus, Minus, Save, Trash, AlertCircle, CheckCircle } from 'lucide-react';
+import { Plus, Minus, Save, Trash, AlertCircle, CheckCircle, X } from 'lucide-react';
 import { TagOperation } from '../types';
-import { updateTags } from '../services/mediaService';
+import { updateTags, deleteMedia } from '../services/mediaService';
 
 const ManageTags = () => {
   const [urls, setUrls] = useState<string[]>([]);
   const [urlInput, setUrlInput] = useState('');
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
-  const [operation, setOperation] = useState<'add' | 'remove'>('add');
+  const [operation, setOperation] = useState<'add' | 'remove' | 'delete'>('add');
   const [isProcessing, setIsProcessing] = useState(false);
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
   
@@ -35,38 +35,73 @@ const ManageTags = () => {
   };
   
   const handleSubmit = async () => {
-    if (urls.length === 0 || tags.length === 0) {
-      setResult({
-        success: false,
-        message: 'Please provide at least one URL and one tag'
-      });
-      return;
+    console.log('handleSubmit called with operation:', operation);
+    console.log('URLs array:', urls);
+    console.log('Tags array:', tags);
+    
+    if (operation === 'delete') {
+      if (urls.length === 0) {
+        console.log('No URLs provided for deletion');
+        setResult({
+          success: false,
+          message: 'Please provide at least one URL to delete'
+        });
+        return;
+      }
+    } else {
+      if (urls.length === 0 || tags.length === 0) {
+        console.log('Missing URLs or tags for tag operation');
+        setResult({
+          success: false,
+          message: 'Please provide at least one URL and one tag'
+        });
+        return;
+      }
     }
     
+    console.log('Starting processing...');
     setIsProcessing(true);
     setResult(null);
     
-    const tagOperation: TagOperation = {
-      urls,
-      tags,
-      operation
-    };
-    
     try {
-      await updateTags(tagOperation);
-      
-      setResult({
-        success: true,
-        message: `Successfully ${operation === 'add' ? 'added' : 'removed'} tags from the selected media`
-      });
+      if (operation === 'delete') {
+        console.log('Calling deleteMedia with URLs:', urls);
+        await deleteMedia(urls);
+        console.log('deleteMedia completed successfully');
+        setResult({
+          success: true,
+          message: 'Successfully deleted the selected media files'
+        });
+      } else {
+        // Format the tag operation according to the API requirements
+        // The API expects urls in the 'url' field and tags formatted as 'tag,quantity'
+        const tagOperation: TagOperation = {
+          urls,
+          // For now, we'll use a quantity of 1 for all tags
+          // This can be enhanced in the future to allow specifying quantities
+          tags,
+          operation
+        };
+        
+        // Call the updateTags function which now handles the proper formatting
+        const response = await updateTags(tagOperation);
+        
+        console.log('Tag operation completed:', response);
+        
+        setResult({
+          success: true,
+          message: `Successfully ${operation === 'add' ? 'added' : 'removed'} tags from the selected media`
+        });
+      }
       
       // Clear form
       setUrls([]);
       setTags([]);
     } catch (error) {
+      console.error('Error in handleSubmit:', error);
       setResult({
         success: false,
-        message: error instanceof Error ? error.message : 'Failed to update tags'
+        message: error instanceof Error ? error.message : 'Failed to process request'
       });
     } finally {
       setIsProcessing(false);
@@ -78,7 +113,7 @@ const ManageTags = () => {
       <div className="bg-white rounded-lg shadow p-6">
         <h1 className="text-2xl font-bold text-gray-900">Manage Tags</h1>
         <p className="mt-1 text-gray-500">
-          Add or remove tags from existing media files
+          Add or remove tags from existing media files, or delete files entirely
         </p>
       </div>
       
@@ -106,7 +141,7 @@ const ManageTags = () => {
           <div>
             <h2 className="text-lg font-medium text-gray-900">Select Operation</h2>
             <p className="mt-1 text-sm text-gray-500">
-              Choose whether to add or remove tags from the selected media
+              Choose whether to add or remove tags from the selected media, or delete files entirely
             </p>
             
             <div className="mt-4 flex space-x-4">
@@ -134,6 +169,19 @@ const ManageTags = () => {
               >
                 <Minus className="mr-2 h-5 w-5" />
                 Remove Tags
+              </button>
+              
+              <button
+                type="button"
+                onClick={() => setOperation('delete')}
+                className={`flex items-center px-4 py-2 rounded-md ${
+                  operation === 'delete'
+                    ? 'bg-red-100 text-red-800'
+                    : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
+                }`}
+              >
+                <Trash className="mr-2 h-5 w-5" />
+                Delete Files
               </button>
             </div>
           </div>
@@ -188,86 +236,145 @@ const ManageTags = () => {
             </div>
           </div>
           
-          <div className="pt-6 border-t border-gray-200">
-            <h2 className="text-lg font-medium text-gray-900">Step 2: Specify Tags</h2>
-            <p className="mt-1 text-sm text-gray-500">
-              {operation === 'add'
-                ? 'Add the tags you want to apply to the selected media'
-                : 'Add the tags you want to remove from the selected media'
-              }
-            </p>
-            
-            <div className="mt-4">
-              <div className="flex space-x-2">
-                <input
-                  type="text"
-                  value={tagInput}
-                  onChange={(e) => setTagInput(e.target.value)}
-                  placeholder="Enter tag"
-                  className="input flex-1"
-                />
+          {operation !== 'delete' && (
+            <div className="pt-6 border-t border-gray-200">
+              <h2 className="text-lg font-medium text-gray-900">Step 2: Specify Tags</h2>
+              <p className="mt-1 text-sm text-gray-500">
+                {operation === 'add'
+                  ? 'Add the tags you want to apply to the selected media'
+                  : 'Add the tags you want to remove from the selected media'
+                }
+              </p>
+              
+              <div className="mt-4">
+                <div className="flex space-x-2">
+                  <input
+                    type="text"
+                    value={tagInput}
+                    onChange={(e) => setTagInput(e.target.value)}
+                    placeholder="Enter tag"
+                    className="input flex-1"
+                  />
+                  
+                  <button
+                    type="button"
+                    onClick={handleAddTag}
+                    disabled={!tagInput.trim()}
+                    className="btn btn-primary whitespace-nowrap"
+                  >
+                    Add Tag
+                  </button>
+                </div>
                 
+                {tags.length > 0 && (
+                  <div className="mt-4">
+                    <h3 className="text-sm font-medium text-gray-700">Added Tags ({tags.length})</h3>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {tags.map((tag, index) => (
+                        <div key={index} className="flex items-center bg-gray-100 rounded-full pl-3 pr-2 py-1">
+                          <span className="text-sm font-medium text-gray-900">
+                            {tag}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveTag(index)}
+                            className="ml-1 text-gray-500 hover:text-gray-700"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          
+          {operation !== 'delete' && (
+            <div className="pt-6 border-t border-gray-200">
+              <div className="flex justify-end">
                 <button
                   type="button"
-                  onClick={handleAddTag}
-                  disabled={!tagInput.trim()}
-                  className="btn btn-primary whitespace-nowrap"
+                  onClick={handleSubmit}
+                  disabled={isProcessing || urls.length === 0 || tags.length === 0}
+                  className="btn btn-primary flex items-center"
                 >
-                  Add Tag
+                  {isProcessing ? (
+                    <>
+                      <span className="animate-spin mr-2">
+                        <svg className="h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                      </span>
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="mr-2 h-4 w-4" />
+                      {operation === 'add' ? 'Add Tags' : 'Remove Tags'}
+                    </>
+                  )}
                 </button>
               </div>
-              
-              {tags.length > 0 && (
-                <div className="mt-4">
-                  <h3 className="text-sm font-medium text-gray-700">Added Tags ({tags.length})</h3>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {tags.map((tag, index) => (
-                      <div key={index} className="flex items-center bg-gray-100 rounded-full pl-3 pr-2 py-1">
-                        <span className="text-sm font-medium text-gray-900">
-                          {tag}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveTag(index)}
-                          className="ml-1 text-gray-500 hover:text-gray-700"
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
-          </div>
+          )}
           
-          <div className="pt-6 border-t border-gray-200">
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={handleSubmit}
-                disabled={isProcessing || urls.length === 0 || tags.length === 0}
-                className="btn btn-primary flex items-center"
-              >
-                {isProcessing ? (
-                  <>
-                    <span className="animate-spin mr-2">
-                      <svg className="h-4 w-4 text-white\" xmlns="http://www.w3.org/2000/svg\" fill="none\" viewBox="0 0 24 24">
-                        <circle className="opacity-25\" cx="12\" cy="12\" r="10\" stroke="currentColor\" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                    </span>
-                    Processing...
-                  </>
-                ) : (
-                  <>
-                    <Save className="mr-2 h-4 w-4" />
-                    {operation === 'add' ? 'Add Tags' : 'Remove Tags'}
-                  </>
-                )}
-              </button>
+          {operation === 'delete' && (
+            <div className="pt-6 border-t border-gray-200">
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    console.log('=== DELETE BUTTON CLICKED ===');
+                    console.log('URLs to delete:', urls);
+                    setIsProcessing(true);
+                    setResult(null);
+                    
+                    deleteMedia(urls)
+                      .then(() => {
+                        console.log('Delete operation completed successfully');
+                        setResult({
+                          success: true,
+                          message: 'Successfully deleted the selected media files'
+                        });
+                        setUrls([]);
+                      })
+                      .catch(error => {
+                        console.error('Error in delete operation:', error);
+                        setResult({
+                          success: false,
+                          message: error instanceof Error ? error.message : 'Failed to delete files'
+                        });
+                      })
+                      .finally(() => {
+                        setIsProcessing(false);
+                      });
+                  }}
+                  disabled={isProcessing || urls.length === 0}
+                  className="btn btn-danger flex items-center bg-red-600 hover:bg-red-700 text-white"
+                >
+                  {isProcessing ? (
+                    <>
+                      <span className="animate-spin mr-2">
+                        <svg className="h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                      </span>
+                      Deleting...
+                    </>
+                  ) : (
+                    <>
+                      <Trash className="mr-2 h-4 w-4" />
+                      Delete Files
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>

@@ -28,8 +28,14 @@ export interface TagOperation {
   operation: 'add' | 'remove';
 }
 
+export interface DeleteOperation {
+  urls: string[];
+}
+
 export interface SearchQuery {
-  tags: { [key: string]: number };
+  tags?: { [key: string]: number };
+  species?: string[];
+  thumbnailUrl?: string;
 }
 
 export interface SearchResult {

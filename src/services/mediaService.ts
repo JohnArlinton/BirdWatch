@@ -149,13 +149,35 @@ export const searchMedia = async (query: SearchQuery): Promise<SearchResult> => 
   await new Promise(resolve => setTimeout(resolve, 1000));
   
   // Mock implementation - filter the mock data based on the query
-  const filteredFiles = mockMediaFiles.filter(file => {
-    // Check if the file has all the requested tags with at least the minimum count
-    return Object.entries(query.tags).every(([tagName, minCount]) => {
-      const tag = file.tags.find(t => t.name === tagName);
-      return tag && tag.count >= minCount;
+  let filteredFiles = mockMediaFiles;
+  
+  // Filter by tags if provided
+  if (query.tags && Object.keys(query.tags).length > 0) {
+    filteredFiles = filteredFiles.filter(file => {
+      // Check if the file has all the requested tags with at least the minimum count
+      return Object.entries(query.tags!).every(([tagName, minCount]) => {
+        const tag = file.tags.find(t => t.name === tagName);
+        return tag && tag.count >= minCount;
+      });
     });
-  });
+  }
+  
+  // Filter by species if provided
+  if (query.species && query.species.length > 0) {
+    filteredFiles = filteredFiles.filter(file => {
+      // Check if the file has at least one of the specified species
+      return query.species!.some(species => 
+        file.tags.some(tag => tag.name.toLowerCase() === species.toLowerCase())
+      );
+    });
+  }
+  
+  // Filter by thumbnail URL if provided
+  if (query.thumbnailUrl) {
+    filteredFiles = filteredFiles.filter(file => 
+      file.thumbnailUrl === query.thumbnailUrl
+    );
+  }
   
   return {
     files: filteredFiles,
@@ -179,43 +201,214 @@ export const searchMedia = async (query: SearchQuery): Promise<SearchResult> => 
  * Update tags for multiple media files
  */
 export const updateTags = async (tagOperation: TagOperation): Promise<void> => {
-  // Simulate API call delay
-  await new Promise(resolve => setTimeout(resolve, 1200));
-  
-  // Mock implementation - just log the operation
-  console.log('Tag operation:', tagOperation);
-  
-  // Real implementation would look something like this:
-  /*
-  await axios.post(`${API_BASE_URL}/manage-tags`, tagOperation, {
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${getAuthToken()}`
+  try {
+    console.log('updateTags function called with:', tagOperation);
+    
+    // Convert the operation type to a number (1 for add, 2 for remove)
+    const operationCode = tagOperation.operation === 'add' ? 1 : 0;
+    console.log('Operation code:', operationCode);
+    
+    // Format tags as "tag,count" strings
+    // For simplicity, we'll use count=1 for all tags
+    const formattedTags = tagOperation.tags.map(tag => `${tag},1`);
+    console.log('Formatted tags:', formattedTags);
+    
+    // Clean up URLs (remove any backticks or extra quotes)
+    // Log before and after cleaning to debug
+    console.log('Original URLs:', tagOperation.urls);
+    
+    // Enhanced URL cleaning with more detailed logging
+    const cleanUrls = tagOperation.urls.map(url => {
+      console.log('Processing URL:', url, 'Type:', typeof url);
+      if (!url || typeof url !== 'string') {
+        console.warn('Invalid URL detected:', url);
+        return '';
+      }
+      
+      const cleaned = url.replace(/[\s`"']+/g, '').trim();
+      console.log(`Cleaned URL: ${url} -> ${cleaned}`);
+      return cleaned;
+    }).filter(url => url.length > 0); // Remove any empty URLs
+    
+    console.log('Clean URLs array:', cleanUrls);
+    
+    if (cleanUrls.length === 0) {
+      throw new Error('No valid URLs provided after cleaning');
     }
-  });
-  */
+    
+    // Prepare the request payload
+    const requestData = {
+      url: cleanUrls,
+      operation: operationCode,
+      tags: formattedTags
+    };
+    
+    console.log('Sending tag operation:', requestData);
+    console.log('Final request data:', JSON.stringify(requestData));
+    
+    let proxyError = null;
+    
+    // First try using the proxy endpoint to avoid CORS issues
+    // The proxy in vite.config.ts will rewrite /api to the base URL
+    // For example: /api/modify-tags -> https://3p5cd1xfp2.execute-api.ap-southeast-2.amazonaws.com/Production/modify-tags
+    try {
+      console.log('Sending request to proxy endpoint: /api/modify-tags');
+      const response = await axios.post('/api/modify-tags', requestData, {
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        // Add timeout to ensure we don't wait forever
+        timeout: 15000 // Increased timeout for potentially slow connections
+      });
+      
+      if (response && response.data) {
+        console.log('Tag operation response via proxy:', response.data);
+        return response.data;
+      }
+      
+      console.error('No data in response from proxy');
+      throw new Error('No data in response from proxy');
+      
+    } catch (error) {
+      console.error('Error making request through proxy:', error);
+      proxyError = error;
+      // Continue to fallback - don't rethrow yet
+    }
+    
+    // If we get here, the proxy request failed, so try direct API call as a fallback
+    console.log('Attempting direct API call as fallback...');
+    try {
+      const directResponse = await axios.post(
+        'https://3p5cd1xfp2.execute-api.ap-southeast-2.amazonaws.com/Production/modify-tags',
+        requestData,
+        {
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          timeout: 15000 // Increased timeout for potentially slow connections
+        }
+      );
+      
+      if (directResponse && directResponse.data) {
+        console.log('Direct API call succeeded:', directResponse.data);
+        return directResponse.data;
+      }
+      
+      console.error('No data in response from direct API call');
+      throw new Error('No data in response from direct API call');
+      
+    } catch (directError) {
+      console.error('Direct API call also failed:', directError);
+      // If both attempts failed, throw the original error if it exists, otherwise throw the direct error
+      throw proxyError || directError;
+    }
+  } catch (error) {
+    console.error('Failed to update tags:', error);
+    throw error;
+  }
 };
 
 /**
  * Delete media files
  */
-export const deleteMedia = async (fileIds: string[]): Promise<void> => {
-  // Simulate API call delay
-  await new Promise(resolve => setTimeout(resolve, 800));
-  
-  // Mock implementation - just log the operation
-  console.log('Delete files:', fileIds);
-  
-  // Real implementation would look something like this:
-  /*
-  await axios.delete(`${API_BASE_URL}/delete`, {
-    data: { fileIds },
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${getAuthToken()}`
+export const deleteMedia = async (fileUrls: string[]): Promise<void> => {
+  try {
+    console.log('deleteMedia function called with URLs:', fileUrls);
+    
+    // Clean up URLs (remove any backticks or extra quotes)
+    const cleanUrls = fileUrls.map(url => {
+      console.log('Processing URL for deletion:', url, 'Type:', typeof url);
+      if (!url || typeof url !== 'string') {
+        console.warn('Invalid URL detected:', url);
+        return '';
+      }
+      
+      const cleaned = url.replace(/[\s`"']+/g, '').trim();
+      console.log(`Cleaned URL for deletion: ${url} -> ${cleaned}`);
+      return cleaned;
+    }).filter(url => url.length > 0); // Remove any empty URLs
+    
+    console.log('Clean URLs array for deletion:', cleanUrls);
+    
+    if (cleanUrls.length === 0) {
+      throw new Error('No valid URLs provided for deletion');
     }
-  });
-  */
+    
+    // Prepare the request payload with only the url field
+    const requestData = {
+      url: cleanUrls
+    };
+    
+    console.log('Sending delete operation with data:', requestData);
+    
+    let proxyError = null;
+    
+    // First try using the proxy endpoint to avoid CORS issues
+    // The proxy in vite.config.ts will rewrite /api to the base URL
+    try {
+      // Make sure we're using the correct endpoint path
+      const proxyEndpoint = '/api/delete-files';
+      console.log(`Sending request to proxy endpoint: ${proxyEndpoint}`);
+      const response = await axios.post(proxyEndpoint, requestData, {
+        headers: { 
+          'Content-Type': 'application/json',
+          'Origin': window.location.origin
+        },
+        // Add timeout to ensure we don't wait forever
+        timeout: 15000 // Increased timeout for potentially slow connections
+      });
+      
+      if (response && response.data) {
+        console.log('Delete operation response via proxy:', response.data);
+        return response.data;
+      }
+      
+      console.error('No data in response from proxy');
+      throw new Error('No data in response from proxy');
+      
+    } catch (error) {
+      console.error(`Error making request through proxy:`, error);
+      proxyError = error;
+      // Continue to fallback - don't rethrow yet
+    }
+
+    // Skip the proxy and directly call the API endpoint
+    try {
+      // Use the same endpoint path that the proxy would use after rewriting
+      const directEndpoint = 'https://3p5cd1xfp2.execute-api.ap-southeast-2.amazonaws.com/Production/delete-files';
+      console.log(`Sending delete request directly to API endpoint: ${directEndpoint}`);
+      const response = await axios.post(
+        directEndpoint,
+        requestData,
+        {
+          headers: { 
+            'Content-Type': 'application/json',
+            'Origin': window.location.origin,
+            'Access-Control-Allow-Origin': window.location.origin,
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Origin'
+          },
+          // Add timeout to ensure we don't wait forever
+          timeout: 15000 // Increased timeout for potentially slow connections
+        }
+      );
+      
+      if (response && response.data) {
+        console.log('Delete operation response:', response.data);
+        return response.data;
+      }
+      
+      console.error('No data in response from API for delete operation');
+      throw new Error('No data in response from API for delete operation');
+      
+    } catch (error) {
+      console.error('Error making delete request:', error);
+      throw error;
+    }
+  } catch (error) {
+    console.error('Failed to delete media:', error);
+    throw error;
+  }
 };
 
 /**
